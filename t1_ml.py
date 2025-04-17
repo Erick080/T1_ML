@@ -12,6 +12,7 @@ Alunos: Eduardo Traunig, Erick Branquinho Machado
 from pathlib import Path
 
 import pandas as pd
+import numpy as np
 
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn.model_selection import train_test_split
@@ -30,6 +31,9 @@ from sklearn.metrics import classification_report
 
 import matplotlib.pyplot as plt
 from sklearn.tree import plot_tree
+
+import shap
+shap.initjs()
 
 df = pd.read_csv('https://raw.githubusercontent.com/Erick080/T1_ML/refs/heads/main/filtered_thyroid_data.csv')
 df.head()
@@ -100,3 +104,58 @@ plt.show()
 
 """Naive Bayes"""
 
+
+
+"""KNN
+
+"""
+
+param_grid = {
+      'n_neighbors': [7, 8, 9],
+      'weights': ['uniform','distance'],
+      'leaf_size': [1, 2, 3, 4, 5],
+      'p': [1, 2, 3]
+  }
+# Grid search with cross-validation
+grid_search = GridSearchCV(KNeighborsClassifier(), param_grid, n_jobs=-1)
+grid_search.fit(X_train, Y_train)
+
+print("Best parameters:", grid_search.best_params_)
+print("Best cross-validation score:", grid_search.best_score_)
+best_score = grid_search.best_score_
+
+y_pred = grid_search.predict(X_test)
+
+#print("Relatório de classificação (teste):")
+#print(classification_report(Y_test, y_pred))
+print('Accuracy:', accuracy_score(Y_test, y_pred))
+print('F1:', f1_score(Y_test, y_pred, average='macro'))
+print('Precision:', precision_score(Y_test, y_pred, average='macro'))
+print('Recall:', recall_score(Y_test, y_pred, average='macro'))
+
+"""Configuracao do SHAP para gerar graficos informativos. O primeiro apresenta as features mais importantes na classificacao das instancias do dataset de treino"""
+
+# Função de predição
+def f(x):
+    return grid_search.predict_proba(x)[:, 1]
+
+# Conversão para float64
+X_train_asfloat = X_train.astype(np.float64)
+X_test_asfloat = X_test.astype(np.float64)
+
+# Cria o explainer com background mais representativo
+explainer = shap.Explainer(f, X_train_asfloat)
+
+# Calcula valores SHAP
+shap_values = explainer(X_test_asfloat.iloc[0:1000, :])
+
+# Exibe gráfico de barras com as top features
+shap.plots.bar(shap_values)
+
+"""No grafico Beeswarm:
+ - Cada ponto representa uma instancia
+ - A cor representa o valor da feature, no caso de features booleanas, azul representa false e vermelho true
+ - O valor SHAP positivo representa a influencia que a feature teve para classificar como *TRUE* a predicao da recorrencia de cancer de tireoide, e o negativo a predicao da nao recorrencia.
+"""
+
+shap.plots.beeswarm(shap_values)
