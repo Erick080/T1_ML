@@ -18,11 +18,13 @@ from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 
-from sklearn.naive_bayes import GaussianNB
+from sklearn.naive_bayes import GaussianNB, MultinomialNB
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer, TfidfTransformer
 from sklearn.pipeline import make_pipeline
+
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
 from sklearn.model_selection import GridSearchCV
 from sklearn.preprocessing import OneHotEncoder
@@ -38,13 +40,13 @@ shap.initjs()
 df = pd.read_csv('https://raw.githubusercontent.com/Erick080/T1_ML/refs/heads/main/filtered_thyroid_data.csv')
 df.head()
 
-df_encoded = pd.get_dummies(df, columns=[
-    'Gender', 'Hx Radiothreapy', 'Adenopathy',
-    'Pathology', 'Focality', 'Risk',
-    'T', 'N', 'M', 'Stage', 'Response', 'Recurred'
-], drop_first=True)
+df['Age_Range'] = pd.cut(df['Age'], bins=[15, 30, 45, 60], labels=['15-30', '31-45', '46-60'])
+df = df.drop(columns=['Age'])
+
+df_encoded = pd.get_dummies(df, drop_first=False)
 
 df = df_encoded
+df = df.drop(columns=['Recurred_No'])
 df.head()
 
 Y = df['Recurred_Yes']
@@ -55,12 +57,7 @@ X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_
 """Árvore de Decisão"""
 
 decision_tree = DecisionTreeClassifier()
-#param_grid = {
-#    'max_depth': [2, 3, 4, 5],
-#    'min_samples_split': [2, 4, 6],
-#    'min_samples_leaf': [1, 2, 3],
-#    'criterion': ['gini', 'entropy']
-#}
+
 param_grid = {
     'max_depth': [2, 3, 4, 5],
     'min_samples_split': list(range(2,6)),
@@ -83,18 +80,23 @@ print('F1:', f1_score(Y_test, y_pred, average='macro'))
 print('Precision:', precision_score(Y_test, y_pred, average='macro'))
 print('Recall:', recall_score(Y_test, y_pred, average='macro'))
 
+cm = confusion_matrix(Y_test, y_pred)
+disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=['Não Recorreu', 'Recorreu'])
+disp.plot(cmap=plt.cm.Blues)
+plt.title("Matriz de Confusão - Árvore de Decisão")
+plt.show()
+
 # Plot da Arvore Gerada
 best_tree = grid_search.best_estimator_
 
 class_names = [str(cls) for cls in best_tree.classes_]
 
-# Criar a figura
-plt.figure(figsize=(24, 12))  # Tamanho ajustável conforme necessário
+plt.figure(figsize=(24, 12))
 plot_tree(
     best_tree,
     filled=True,
-    feature_names=X_train.columns,      # nomes das colunas codificadas
-    class_names=class_names,            # agora as classes estão em string
+    feature_names=X_train.columns,
+    class_names=class_names,
     rounded=True,
     fontsize=10
 )
@@ -104,7 +106,28 @@ plt.show()
 
 """Naive Bayes"""
 
+nb_multinomial = MultinomialNB()  #naive bayes multinomial eh o mais apropriado para dataframes com muitas variaveis booleanas
+nb_multinomial.fit(X_train, Y_train)
+y_pred_nb = nb_multinomial.predict(X_test)
+print('Accuracy:', accuracy_score(Y_test, y_pred_nb))
+print('F1:', f1_score(Y_test, y_pred_nb, average='macro'))
+print('Precision:', precision_score(Y_test, y_pred_nb, average='macro'))
+print('Recall:', recall_score(Y_test, y_pred_nb, average='macro'))
 
+cm_nb = confusion_matrix(Y_test, y_pred_nb)
+disp_nb = ConfusionMatrixDisplay(confusion_matrix=cm_nb, display_labels=['Não Recorreu', 'Recorreu'])
+disp_nb.plot(cmap=plt.cm.Blues)
+plt.title("Matriz de Confusão - Naive Bayes")
+plt.show()
+
+classes = ['Nao Recorreu', 'Recorreu']
+features = X_train.columns
+
+# Calculando as probabilidades condicionais
+probs = np.exp(nb_multinomial.feature_log_prob_)
+
+df_probs = pd.DataFrame(probs.T, index=features, columns=[f"P(feature|class={c})" for c in classes])
+print(df_probs.round(4))
 
 """KNN
 
@@ -133,17 +156,22 @@ print('F1:', f1_score(Y_test, y_pred, average='macro'))
 print('Precision:', precision_score(Y_test, y_pred, average='macro'))
 print('Recall:', recall_score(Y_test, y_pred, average='macro'))
 
+cm_knn = confusion_matrix(Y_test, y_pred)
+disp_knn = ConfusionMatrixDisplay(confusion_matrix=cm_knn, display_labels=['Não Recorreu', 'Recorreu'])
+disp_knn.plot(cmap=plt.cm.Blues)
+plt.title("Matriz de Confusão - KNN")
+plt.show()
+
 """Configuracao do SHAP para gerar graficos informativos. O primeiro apresenta as features mais importantes na classificacao das instancias do dataset de treino"""
 
 # Função de predição
 def f(x):
     return grid_search.predict_proba(x)[:, 1]
 
-# Conversão para float64
+# Conversão dos dados para float64 para funcionar com o SHAP
 X_train_asfloat = X_train.astype(np.float64)
 X_test_asfloat = X_test.astype(np.float64)
 
-# Cria o explainer com background mais representativo
 explainer = shap.Explainer(f, X_train_asfloat)
 
 # Calcula valores SHAP
