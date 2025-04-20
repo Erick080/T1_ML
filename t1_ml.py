@@ -106,9 +106,21 @@ plt.show()
 
 """Naive Bayes"""
 
-nb_multinomial = MultinomialNB()  #naive bayes multinomial eh o mais apropriado para dataframes com muitas variaveis booleanas
-nb_multinomial.fit(X_train, Y_train)
-y_pred_nb = nb_multinomial.predict(X_test)
+# naive bayes multinomial eh o mais apropriado para dataframes com muitas variaveis booleanas
+
+# Define hyperparameters to search
+param_grid = {
+    'alpha': [0.01, 0.1, 1.0]
+}
+# Grid search with cross-validation
+grid_search = GridSearchCV(MultinomialNB(), param_grid, cv=5, scoring='accuracy')
+grid_search.fit(X_train, Y_train)
+
+print("Best parameters:", grid_search.best_params_)
+print("Best cross-validation score:", grid_search.best_score_)
+best_score = grid_search.best_score_
+
+y_pred_nb = grid_search.predict(X_test)
 print('Accuracy:', accuracy_score(Y_test, y_pred_nb))
 print('F1:', f1_score(Y_test, y_pred_nb, average='macro'))
 print('Precision:', precision_score(Y_test, y_pred_nb, average='macro'))
@@ -124,7 +136,7 @@ classes = ['Nao Recorreu', 'Recorreu']
 features = X_train.columns
 
 # Calculando as probabilidades condicionais
-probs = np.exp(nb_multinomial.feature_log_prob_)
+probs = np.exp(grid_search.best_estimator_.feature_log_prob_)
 
 df_probs = pd.DataFrame(probs.T, index=features, columns=[f"P(feature|class={c})" for c in classes])
 print(df_probs.round(4))
